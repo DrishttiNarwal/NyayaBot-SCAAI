@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom"; // import useNavigate
 import "./Chat.css";
 
 function Chat() {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedState, setSelectedState] = useState("telangana"); // Default state
+  const [selectedState, setSelectedState] = useState("telangana");
   const chatEndRef = useRef(null);
+  const navigate = useNavigate(); // initialize navigate
 
   const states = [
     "andhra-pradesh", "arunachal-pradesh", "assam", "bihar", "chhattisgarh",
@@ -22,21 +24,15 @@ function Chat() {
 
   const handleChat = async () => {
     if (!query.trim()) return;
-
     setMessages((prev) => [...prev, { type: "user", text: query }]);
     setQuery("");
     setLoading(true);
-
     try {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: query,
-          state: selectedState,
-        }),
+        body: JSON.stringify({ query: query, state: selectedState }),
       });
-
       const data = await res.json();
       setMessages((prev) => [...prev, { type: "bot", text: data.response }]);
     } catch (err) {
@@ -45,7 +41,6 @@ function Chat() {
         { type: "bot", text: "NyayaBot couldn't respond. Please try again." },
       ]);
     }
-
     setLoading(false);
   };
 
@@ -104,13 +99,12 @@ function Chat() {
           </div>
         ))}
         {loading && (
-  <div className="chat-bubble bot-bubble">
-    <div className="typing-dots">
-      <span></span><span></span><span></span>
-    </div>
-  </div>
-)}
-
+          <div className="chat-bubble bot-bubble">
+            <div className="typing-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        )}
         <div ref={chatEndRef} />
       </div>
 
@@ -127,6 +121,9 @@ function Chat() {
         </button>
         <button className="chat-button reset" onClick={() => setMessages([])}>
           Clear
+        </button>
+        <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
+          Summarize Chat
         </button>
       </div>
     </div>
