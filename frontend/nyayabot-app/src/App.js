@@ -1,10 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Chat from './pages/Chat';
 import Home from './pages/Home';  
 import Summarize from './pages/Summarize';
 
 function App() {
+
+  // Ping backend health endpoint once on app load
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/health")
+      .catch(err => console.error("Backend not reachable:", err));
+  }, []);
+
   return (
     <Router>
       <div className="main-wrapper">
@@ -20,10 +27,8 @@ function App() {
         <main className="content">
           <Routes>
             <Route path="/" element={<Home />} />
-            {/* Add other routes below */}
             <Route path="/chat" element={<Chat />} />
             <Route path="/summarize" element={<Summarize />} />
-            {/* Add /services if you want */}
           </Routes>
         </main>
       </div>
