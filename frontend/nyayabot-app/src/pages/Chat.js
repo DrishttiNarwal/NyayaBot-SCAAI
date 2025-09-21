@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom"; // import useNavigate
+import { useNavigate } from "react-router-dom";
+import { FaMicrophone, FaPaperPlane } from "react-icons/fa"; // voice + send icons
 import "./Chat.css";
 
 function Chat() {
@@ -8,7 +9,7 @@ function Chat() {
   const [loading, setLoading] = useState(false);
   const [selectedState, setSelectedState] = useState("telangana");
   const chatEndRef = useRef(null);
-  const navigate = useNavigate(); // initialize navigate
+  const navigate = useNavigate();
 
   const states = [
     "andhra-pradesh", "arunachal-pradesh", "assam", "bihar", "chhattisgarh",
@@ -49,6 +50,10 @@ function Chat() {
       e.preventDefault();
       handleChat();
     }
+  };
+
+  const handleVoiceClick = () => {
+    alert("Voice input feature coming soon!");
   };
 
   const renderText = (text) => {
@@ -116,16 +121,19 @@ function Chat() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyPress}
         />
-        <button className="chat-button" onClick={handleChat} disabled={loading}>
-          {loading ? "..." : "Send"}
-        </button>
-        <button className="chat-button reset" onClick={() => setMessages([])}>
-          Clear
-        </button>
-        <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
-          Summarize Chat
-        </button>
+        <div className="input-icons">
+          <button className="icon-button voice" onClick={handleVoiceClick}>
+            <FaMicrophone />
+          </button>
+          <button className="icon-button send" onClick={handleChat} disabled={loading}>
+            <FaPaperPlane />
+          </button>
+        </div>
       </div>
+
+      <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
+        Summarize Chat
+      </button>
     </div>
   );
 }
