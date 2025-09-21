@@ -1,0 +1,11 @@
+fastapi==0.111.1
+uvicorn==0.23.2
+pydantic==2.6.1
+langchain==0.1.214
+langchain-community==0.1.17
+transformers==4.34.0
+torch==2.2.0
+scikit-learn==1.3.2
+numpy==1.26.2
+pyarrow==12.0.1
+sentence-transformers==2.2.2
