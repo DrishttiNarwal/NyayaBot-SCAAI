@@ -1,3 +1,4 @@
+import os
 import json
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -11,61 +12,27 @@ from langchain.prompts import PromptTemplate
 # === Path to your dataset ===
 DATA_PATH = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\data\indian_schemes_data_final_cleaned.json"
 
-def setup_chatbot(state: str):
-    # === Load data ===
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+# === Path to persist Chroma DB ===
+CHROMA_DIR = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\chroma_db"
 
-    # === Normalize input state ===
-    matched_state = state.lower().strip()
+# === Load and cache LLM globally ===
+MODEL_ID = "google/flan-t5-large"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID)
+pipe = pipeline(
+    "text2text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    max_length=1024,
+    do_sample=False,
+    num_beams=4
+)
+llm = HuggingFacePipeline(pipeline=pipe)
 
-    # === Filter relevant documents ===
-    filtered_docs = [
-        entry for entry in data
-        if entry.get("state", "").lower() == matched_state
-        and "final_cleaned_content" in entry
-        and len(entry["final_cleaned_content"].strip()) > 50
-    ]
-
-    if not filtered_docs:
-        return None
-
-    # === Convert to LangChain Documents ===
-    documents = []
-    for doc in filtered_docs:
-        content = doc.get("final_cleaned_content", "")
-        context = f"""Scheme Title: {doc.get('title', 'N/A')}
-Target Audience: {', '.join(doc.get('target_audience', []))}
-Details: {content}"""
-        documents.append(Document(page_content=context))
-
-    # === Split large text into chunks ===
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=100)
-    split_docs = text_splitter.split_documents(documents)
-
-    # === Generate embeddings & vectorstore ===
-    embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
-    vectordb = Chroma.from_documents(split_docs, embedding_model)
-
-    # === Load HF LLM ===
-    model_id = "google/flan-t5-large"
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
-
-    pipe = pipeline(
-        "text2text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_length=1024,
-        do_sample=False,
-        num_beams=4
-    )
-    llm = HuggingFacePipeline(pipeline=pipe)
-
-    # === Prompt template ===
-    prompt_template = PromptTemplate(
-        input_variables=["context", "question"],
-        template="""You are NyayaBot, a helpful assistant that explains Indian government schemes in clear, factual, and complete language.
+# === Prompt template (global) ===
+prompt_template = PromptTemplate(
+    input_variables=["context", "question"],
+    template="""You are NyayaBot, a helpful assistant that explains Indian government schemes in clear, factual, and complete language.
 
 Instructions:
 - If a government scheme is asked, include its name, eligibility, benefits, application process (if possible), and important dates.
@@ -81,9 +48,53 @@ Question:
 
 Answer:
 """
-    )
+)
 
-    # === Setup QA chain ===
+def setup_chatbot(state: str):
+    state = state.lower().strip()
+
+    # === Create folder for Chroma DB if not exists ===
+    os.makedirs(CHROMA_DIR, exist_ok=True)
+
+    # === Check if Chroma DB for this state exists ===
+    state_db_path = os.path.join(CHROMA_DIR, state)
+    if os.path.exists(state_db_path):
+        vectordb = Chroma(persist_directory=state_db_path, embedding_function=HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5"))
+    else:
+        # Load data
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Filter relevant documents
+        filtered_docs = [
+            entry for entry in data
+            if entry.get("state", "").lower() == state
+            and "final_cleaned_content" in entry
+            and len(entry["final_cleaned_content"].strip()) > 50
+        ]
+
+        if not filtered_docs:
+            return None
+
+        # Convert to LangChain Documents
+        documents = []
+        for doc in filtered_docs:
+            content = doc.get("final_cleaned_content", "")
+            context = f"""Scheme Title: {doc.get('title', 'N/A')}
+Target Audience: {', '.join(doc.get('target_audience', []))}
+Details: {content}"""
+            documents.append(Document(page_content=context))
+
+        # Split documents into chunks
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=100)
+        split_docs = text_splitter.split_documents(documents)
+
+        # Generate embeddings and create Chroma vectorstore
+        embedding_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
+        vectordb = Chroma.from_documents(split_docs, embedding_model, persist_directory=state_db_path)
+        vectordb.persist()  # Save to disk
+
+    # Setup QA chain
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=vectordb.as_retriever(search_kwargs={"k": 5}),
