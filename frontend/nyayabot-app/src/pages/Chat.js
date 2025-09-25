@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaMicrophone, FaPaperPlane } from "react-icons/fa"; // voice + send icons
+import { FaMicrophone, FaPaperPlane } from "react-icons/fa";
 import "./Chat.css";
 
 function Chat() {
@@ -19,21 +19,32 @@ function Chat() {
     "telangana", "tripura", "uttar-pradesh", "uttarakhand", "west-bengal"
   ];
 
+  // Scroll to the latest message whenever messages update
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Optional: Detect Hindi based on Devanagari characters (for logging/UI)
+  const detectLanguage = (text) => {
+    const hindiRegex = /[\u0900-\u097F]/;
+    return hindiRegex.test(text) ? "hi" : "en";
+  };
+
   const handleChat = async () => {
     if (!query.trim()) return;
+
+    // Add user message
     setMessages((prev) => [...prev, { type: "user", text: query }]);
     setQuery("");
     setLoading(true);
+
     try {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query, state: selectedState }),
+        body: JSON.stringify({ query: query, state: selectedState }), // lang removed, backend auto-detects
       });
+
       const data = await res.json();
       setMessages((prev) => [...prev, { type: "bot", text: data.response }]);
     } catch (err) {
@@ -42,6 +53,7 @@ function Chat() {
         { type: "bot", text: "NyayaBot couldn't respond. Please try again." },
       ]);
     }
+
     setLoading(false);
   };
 
@@ -56,6 +68,7 @@ function Chat() {
     alert("Voice input feature coming soon!");
   };
 
+  // Render text with clickable links
   const renderText = (text) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     return text.split(urlRegex).map((part, i) =>

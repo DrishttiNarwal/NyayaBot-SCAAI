@@ -9,13 +9,11 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 
-# === Path to your dataset ===
+# === Paths ===
 DATA_PATH = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\data\indian_schemes_data_final_cleaned.json"
-
-# === Path to persist Chroma DB ===
 CHROMA_DIR = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\chroma_db"
 
-# === Load and cache LLM globally ===
+# === Load main LLM globally (RAG) ===
 MODEL_ID = "google/flan-t5-large"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID)
@@ -28,6 +26,33 @@ pipe = pipeline(
     num_beams=4
 )
 llm = HuggingFacePipeline(pipeline=pipe)
+
+# === Load NLLB model for translation ===
+NLLB_MODEL = "facebook/nllb-200-distilled-600M"
+NLLB_TOKENIZER = AutoTokenizer.from_pretrained(NLLB_MODEL)
+NLLB_MODEL_OBJ = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL)
+
+translator = pipeline(
+    "translation",
+    model=NLLB_MODEL_OBJ,
+    tokenizer=NLLB_TOKENIZER,
+    max_length=1024,
+    truncation=True
+)
+
+# NLLB language codes
+SRC_HI = "hin_Deva"
+TGT_EN = "eng_Latn"
+SRC_EN = "eng_Latn"
+TGT_HI = "hin_Deva"
+
+def translate_text(text: str, src_lang: str, tgt_lang: str) -> str:
+    """
+    Translate text using NLLB-200.
+    src_lang and tgt_lang: BCP-47 codes like 'hin_Deva', 'eng_Latn'
+    """
+    translated = translator(text, src_lang=src_lang, tgt_lang=tgt_lang)
+    return translated[0]["translation_text"]
 
 # === Prompt template (global) ===
 prompt_template = PromptTemplate(
@@ -53,15 +78,18 @@ Answer:
 def setup_chatbot(state: str):
     state = state.lower().strip()
 
-    # === Create folder for Chroma DB if not exists ===
+    # Create folder for Chroma DB if not exists
     os.makedirs(CHROMA_DIR, exist_ok=True)
 
-    # === Check if Chroma DB for this state exists ===
+    # Check if Chroma DB for this state exists
     state_db_path = os.path.join(CHROMA_DIR, state)
     if os.path.exists(state_db_path):
-        vectordb = Chroma(persist_directory=state_db_path, embedding_function=HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5"))
+        vectordb = Chroma(
+            persist_directory=state_db_path,
+            embedding_function=HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
+        )
     else:
-        # Load data
+        # Load dataset
         with open(DATA_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -104,3 +132,24 @@ Details: {content}"""
     )
 
     return qa_chain
+
+def chatbot_query(qa_chain, user_query: str, lang: str = "en") -> str:
+    """
+    Handles user query in English or Hindi.
+    - If lang='en': directly process query (dataset is in English).
+    - If lang='hi': translate Hindi -> English -> RAG -> English -> Hindi.
+    """
+    if lang == "hi":
+        english_query = translate_text(user_query, SRC_HI, TGT_EN)
+    else:
+        english_query = user_query
+
+    # Query RAG
+    english_answer = qa_chain.invoke({"query": english_query})["result"]
+
+    if lang == "hi":
+        final_answer = translate_text(english_answer, SRC_EN, TGT_HI)
+    else:
+        final_answer = english_answer
+
+    return final_answer
