@@ -147,6 +147,15 @@ function Chat() {
       <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
         Summarize Chat
       </button>
+
+      {/* Disclaimer Section */}
+      <div className="chat-disclaimer">
+        <p>
+          <strong>Disclaimer:</strong> NyayaBot provides simplified information and may not always be fully 
+          accurate. Please refer to the provided official government website links and contact details for 
+          complete information.
+        </p>
+      </div>
     </div>
   );
 }

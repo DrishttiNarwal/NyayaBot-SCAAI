@@ -199,6 +199,7 @@
   transition: all 0.25s ease;
   z-index: 5;
 }
+
 .chat-button.summarize:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(14, 233, 43, 0.4);
@@ -211,3 +212,18 @@
 
 /* Links */
 .chat-link { color:#2563eb; text-decoration:underline; font-weight:500; }
+
+.chat-disclaimer {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #6b7280;
+  text-align: center;
+  background: rgba(243, 244, 246, 0.6);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+.chat-disclaimer strong {
+  color: #1f2937;
+}
