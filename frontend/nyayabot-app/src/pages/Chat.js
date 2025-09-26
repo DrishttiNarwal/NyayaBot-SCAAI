@@ -19,21 +19,14 @@ function Chat() {
     "telangana", "tripura", "uttar-pradesh", "uttarakhand", "west-bengal"
   ];
 
-  // Scroll to the latest message whenever messages update
+  // Scroll to latest message
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Optional: Detect Hindi based on Devanagari characters (for logging/UI)
-  const detectLanguage = (text) => {
-    const hindiRegex = /[\u0900-\u097F]/;
-    return hindiRegex.test(text) ? "hi" : "en";
-  };
-
   const handleChat = async () => {
     if (!query.trim()) return;
 
-    // Add user message
     setMessages((prev) => [...prev, { type: "user", text: query }]);
     setQuery("");
     setLoading(true);
@@ -42,7 +35,7 @@ function Chat() {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query, state: selectedState }), // lang removed, backend auto-detects
+        body: JSON.stringify({ query: query, state: selectedState }),
       });
 
       const data = await res.json();
@@ -68,7 +61,7 @@ function Chat() {
     alert("Voice input feature coming soon!");
   };
 
-  // Render text with clickable links
+  // Render clickable links
   const renderText = (text) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     return text.split(urlRegex).map((part, i) =>
@@ -83,21 +76,15 @@ function Chat() {
   };
 
   return (
-    <div className="chat-container">
-      <div className="chat-header">
-        <h2>NyayaBot</h2>
-        <p className="chat-subtext">
-          Your trusted assistant for simplified government scheme information
-        </p>
-      </div>
-
-      <div className="chat-controls">
-        <label htmlFor="state">Select your state: </label>
+    <div className="chat-layout">
+      {/* Sidebar for state selection */}
+      <aside className="sidebar">
+        <h3 className="sidebar-title">Select Your State</h3>
         <select
-          id="state"
           value={selectedState}
           onChange={(e) => setSelectedState(e.target.value)}
-          className="state-dropdown"
+          className="state-dropdown full-width"
+          size={10} // show multiple states at once
         >
           {states.map((state) => (
             <option key={state} value={state}>
@@ -105,56 +92,70 @@ function Chat() {
             </option>
           ))}
         </select>
-      </div>
+      </aside>
 
-      <div className="chat-window">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`chat-bubble ${msg.type === "user" ? "user-bubble" : "bot-bubble"}`}
-          >
-            {renderText(msg.text)}
-          </div>
-        ))}
-        {loading && (
-          <div className="chat-bubble bot-bubble">
-            <div className="typing-dots">
-              <span></span><span></span><span></span>
-            </div>
-          </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
-
-      <div className="chat-input-row">
-        <textarea
-          className="chat-textarea"
-          placeholder="Ask your question..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyPress}
-        />
-        <div className="input-icons">
-          <button className="icon-button voice" onClick={handleVoiceClick}>
-            <FaMicrophone />
-          </button>
-          <button className="icon-button send" onClick={handleChat} disabled={loading}>
-            <FaPaperPlane />
-          </button>
+      {/* Main chat section */}
+      <div className="chat-main">
+        {/* Header */}
+        <div className="chat-header">
+          <h2>NyayaBot</h2>
+          <p className="chat-subtext">
+            Your trusted assistant for simplified government scheme information
+          </p>
         </div>
-      </div>
 
-      <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
-        Summarize Chat
-      </button>
+        {/* Chat Window */}
+        <div className="chat-window">
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`chat-bubble ${msg.type === "user" ? "user-bubble" : "bot-bubble"}`}
+            >
+              {renderText(msg.text)}
+            </div>
+          ))}
+          {loading && (
+            <div className="chat-bubble bot-bubble">
+              <div className="typing-dots">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
 
-      {/* Disclaimer Section */}
-      <div className="chat-disclaimer">
-        <p>
-          <strong>Disclaimer:</strong> NyayaBot provides simplified information and may not always be fully 
-          accurate. Please refer to the provided official government website links and contact details for 
-          complete information.
-        </p>
+        {/* Input Row */}
+        <div className="chat-input-row">
+          <textarea
+            className="chat-textarea"
+            placeholder="Ask your question..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyPress}
+          />
+          <div className="input-icons">
+            <button className="icon-button voice" onClick={handleVoiceClick}>
+              <FaMicrophone />
+            </button>
+            <button className="icon-button send" onClick={handleChat} disabled={loading}>
+              <FaPaperPlane />
+            </button>
+          </div>
+        </div>
+
+        {/* Summarize Button */}
+        <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
+          Summarize Chat
+        </button>
+
+        {/* Disclaimer */}
+        <div className="chat-disclaimer">
+          <p>
+            <strong>Disclaimer:</strong> NyayaBot provides simplified information and may not always be fully 
+            accurate. Please refer to the provided official government website links and contact details for 
+            complete information.
+          </p>
+        </div>
       </div>
     </div>
   );
