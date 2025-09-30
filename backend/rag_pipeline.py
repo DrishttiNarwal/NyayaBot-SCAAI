@@ -10,8 +10,8 @@ from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 
 # === Paths ===
-DATA_PATH = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\data\indian_schemes_data_final_cleaned.json"
-CHROMA_DIR = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\chroma_db"
+DATA_PATH = r"D:\Ankush\SCAAI\NyayaBot-SCAAI\backend\data\indian_schemes_data_final_cleaned.json"
+CHROMA_DIR = r"D:\Ankush\SCAAI\NyayaBot-SCAAI\backend\chroma_db"
 
 # === Load main LLM globally (RAG) ===
 MODEL_ID = "google/flan-t5-large"
