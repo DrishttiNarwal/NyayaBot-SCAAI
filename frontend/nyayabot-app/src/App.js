@@ -1,10 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Chat from './pages/Chat';
 import Home from './pages/Home';  
 import Summarize from './pages/Summarize';
 
 function App() {
+  const [chatHistory, setChatHistory] = useState([]);
+  const [summary, setSummary] = useState("");
 
   // Ping backend health endpoint once on app load
   useEffect(() => {
@@ -27,8 +29,8 @@ function App() {
         <main className="content">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/summarize" element={<Summarize />} />
+            <Route path="/chat" element={<Chat chatHistory={chatHistory} setChatHistory={setChatHistory} setSummary={setSummary} />} />
+            <Route path="/summarize" element={<Summarize summary={summary} />} />
           </Routes>
         </main>
       </div>
