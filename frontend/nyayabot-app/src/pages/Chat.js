@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FaMicrophone, FaPaperPlane } from "react-icons/fa";
 import "./Chat.css";
 
-function Chat() {
+function Chat({ chatHistory, setChatHistory, setSummary }) {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -27,7 +27,12 @@ function Chat() {
   const handleChat = async () => {
     if (!query.trim()) return;
 
-    setMessages((prev) => [...prev, { type: "user", text: query }]);
+    const userMessage = query;
+    setMessages((prev) => [...prev, { type: "user", text: userMessage }]);
+    
+    // Add user message to chat history
+    setChatHistory((prev) => [...prev, { role: "user", content: userMessage }]);
+    
     setQuery("");
     setLoading(true);
 
@@ -35,16 +40,23 @@ function Chat() {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query, state: selectedState }),
+        body: JSON.stringify({ query: userMessage, state: selectedState }),
       });
 
       const data = await res.json();
-      setMessages((prev) => [...prev, { type: "bot", text: data.response }]);
+      const botResponse = data.response;
+      
+      setMessages((prev) => [...prev, { type: "bot", text: botResponse }]);
+      
+      // Add bot response to chat history
+      setChatHistory((prev) => [...prev, { role: "bot", content: botResponse }]);
+      
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { type: "bot", text: "NyayaBot couldn't respond. Please try again." },
-      ]);
+      const errorMessage = "NyayaBot couldn't respond. Please try again.";
+      setMessages((prev) => [...prev, { type: "bot", text: errorMessage }]);
+      
+      // Add error message to chat history
+      setChatHistory((prev) => [...prev, { role: "bot", content: errorMessage }]);
     }
 
     setLoading(false);
@@ -59,6 +71,32 @@ function Chat() {
 
   const handleVoiceClick = () => {
     alert("Voice input feature coming soon!");
+  };
+
+  const handleSummarize = async () => {
+    if (chatHistory.length === 0) {
+      alert("No chat history to summarize. Please have a conversation first.");
+      return;
+    }
+    
+    // Show loading state and navigate immediately
+    setSummary("Loading summary...");
+    navigate("/summarize");
+    
+    try {
+      const res = await fetch("http://localhost:8000/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_history: chatHistory }),
+      });
+      
+      const data = await res.json();
+      setSummary(data.summary);
+      
+    } catch (err) {
+      setSummary("Failed to generate summary. Please try again.");
+      console.error("Summarization error:", err);
+    }
   };
 
   // Render clickable links
@@ -144,7 +182,7 @@ function Chat() {
         </div>
 
         {/* Summarize Button */}
-        <button className="chat-button summarize" onClick={() => navigate("/summarize")}>
+        <button className="chat-button summarize" onClick={handleSummarize}>
           Summarize Chat
         </button>
 
