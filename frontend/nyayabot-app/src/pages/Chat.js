@@ -11,6 +11,9 @@ function Chat({ chatHistory, setChatHistory, setSummary }) {
   const [detailsShown, setDetailsShown] = useState(false);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
+  const [listening, setListening] = useState(false);
+  const socketRef = useRef(null);
+
 
   const states = [
     "andhra-pradesh", "arunachal-pradesh", "assam", "bihar", "chhattisgarh",
@@ -199,10 +202,10 @@ function Chat({ chatHistory, setChatHistory, setSummary }) {
     setDetailsShown(false); // Reset when state changes
   }, [selectedState]);
 
-  const handleChat = async () => {
-    if (!query.trim()) return;
+  const handleChat = async (messageText) => {
+    const userMessage = messageText || query;
+    if (!userMessage.trim()) return;
 
-    const userMessage = query;
     setMessages((prev) => [...prev, { type: "user", text: userMessage }]);
     setChatHistory((prev) => [...prev, { role: "user", content: userMessage }]);
 
@@ -250,8 +253,42 @@ Email: ${details.email}
     }
   };
 
-  const handleVoiceClick = () => {
-    alert("Voice input feature coming soon!");
+const handleVoiceClick = () => {
+    if (listening) {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+      return;
+    }
+
+    setListening(true);
+    const ws = new WebSocket(`ws://localhost:8000/ws/voice-command`);
+    socketRef.current = ws;
+
+    ws.onopen = () => console.log('WebSocket connection opened for voice');
+
+    ws.onmessage = (event) => {
+      const message = event.data;
+      if (message.startsWith("You said:")) {
+        const spokenText = message.substring(9).trim();
+        handleChat(spokenText);
+      } else if (message.startsWith("Error:")) {
+        console.error("Voice recognition error:", message);
+        alert(message);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed for voice');
+      setListening(false);
+      socketRef.current = null;
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setListening(false);
+      socketRef.current = null;
+    };
   };
 
   const handleSummarize = async () => {
@@ -337,7 +374,7 @@ Email: ${details.email}
             onKeyDown={handleKeyPress}
           />
           <div className="input-icons">
-            <button className="icon-button voice" onClick={handleVoiceClick}><FaMicrophone /></button>
+            <button className={`icon-button voice ${listening ? 'listening' : ''}`} onClick={handleVoiceClick}><FaMicrophone /></button>
             <button className="icon-button send" onClick={handleChat} disabled={loading}><FaPaperPlane /></button>
           </div>
         </div>

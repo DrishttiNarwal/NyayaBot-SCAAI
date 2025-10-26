@@ -8,10 +8,13 @@ from langchain_core.documents import Document
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # === Paths ===
-DATA_PATH = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\data\indian_schemes_data_final_cleaned.json"
-CHROMA_DIR = r"D:\Drishtti_Narwal\NyayaBot-SCAAI\backend\chroma_db"
+DATA_PATH = os.environ.get("DATA_PATH")
+CHROMA_DIR = os.environ.get("CHROMA_DIR")
 
 # === Load main LLM globally (RAG) ===
 MODEL_ID = "google/flan-t5-large"

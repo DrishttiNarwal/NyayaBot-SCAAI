@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,WebSocket,WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from rag_pipeline import setup_chatbot, chatbot_query, translate_text, SRC_HI, TGT_EN, SRC_EN, TGT_HI
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 import torch
 import re
+import speech_recognition as sr
 
 app = FastAPI()
 
@@ -93,7 +94,7 @@ T5_MODEL = "google/flan-t5-base"
 _tokenizer = AutoTokenizer.from_pretrained(T5_MODEL)
 _model = AutoModelForSeq2SeqLM.from_pretrained(
     T5_MODEL,
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     device_map="auto" if torch.cuda.is_available() else None
 )
 _summarizer = pipeline(
@@ -351,3 +352,41 @@ def summarize(req: SummarizeRequest):
             else "Unable to generate summary at this time. Please try again."
         )
         return {"summary": fallback_msg}
+    
+@app.websocket("/ws/voice-command")
+async def voice_command_ws(websocket: WebSocket):
+    await websocket.accept()
+    r = sr.Recognizer()
+    try:
+        with sr.Microphone() as source:
+            await websocket.send_text("Listening...")
+            print("Listening for voice command...")
+            
+            r.adjust_for_ambient_noise(source, duration=0.5)
+            audio = r.listen(source)
+            
+            await websocket.send_text("Processing...")
+            print("Processing voice command...")
+
+        try:
+            query = r.recognize_google(audio)
+            await websocket.send_text(f"You said: {query}")
+            print(f"Recognized: '{query}'")
+
+        except sr.UnknownValueError:
+            await websocket.send_text("Error: Could not understand audio")
+            print("Could not understand audio")
+        except sr.RequestError as e:
+            await websocket.send_text(f"Error: Could not request results; {e}")
+            print(f"Could not request results; {e}")
+
+    except WebSocketDisconnect:
+        print("Client disconnected from voice command.")
+    except Exception as e:
+        print(f"An error occurred in the voice websocket: {e}")
+        try:
+            await websocket.send_text(f"Error: An unexpected error occurred: {e}")
+        except Exception as send_error:
+            print(f"Could not send error to client: {send_error}")
+    finally:
+        await websocket.close()
