@@ -1,5 +1,5 @@
 # 🧠 NyayaBot
-
+------------------
 **NyayaBot** is an AI-powered chatbot designed to help individuals access and understand their **legal rights** and **government policies** based on their **age**, **gender**, and **region**.
 
 Built using:
