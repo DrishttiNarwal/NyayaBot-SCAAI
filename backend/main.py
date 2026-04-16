@@ -89,32 +89,36 @@ def chat(req: ChatRequest):
     return {"response": final_response}
 
 
-# Load T5-FLAN base model for summarization
-T5_MODEL = "google/flan-t5-base"
-_tokenizer = AutoTokenizer.from_pretrained(T5_MODEL)
+# Load BART Large CNN for summarization
+SUMMARIZATION_MODEL = "facebook/bart-large-cnn"
+_tokenizer = AutoTokenizer.from_pretrained(SUMMARIZATION_MODEL)
+
+# Load directly to device rather than using device_map="auto" to prevent CUDA embedding faults
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 _model = AutoModelForSeq2SeqLM.from_pretrained(
-    T5_MODEL,
-    dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    device_map="auto" if torch.cuda.is_available() else None
-)
-_summarizer = pipeline(
-    "text2text-generation",
-    model=_model,
-    tokenizer=_tokenizer,
-    device=0 if torch.cuda.is_available() else -1,
-    max_length=512,
-    do_sample=True,
-    temperature=0.7
-)
+    SUMMARIZATION_MODEL,
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+).to(device)
 
 def format_chat_history(chat_history):
-    """Format chat history into a readable string."""
+    """Format chat history into continuous prose for the summarizer, rather than raw dialogue."""
     formatted = []
     for turn in chat_history:
-        role = turn.get("role", "user").capitalize()
-        content = turn.get("content", "")
-        formatted.append(f"{role}: {content}")
-    return "\n".join(formatted)
+        role = turn.get("role", "user").lower()
+        content = turn.get("content", "").strip()
+        if not content:
+            continue
+            
+        if role == "user":
+            formatted.append(f"The user inquired: {content}")
+        else:
+            # Strip markdown heavy characters from bot response so they don't leak into BART's context
+            content = content.replace("###", "").replace("**", "")
+            # Remove any trailing source annotations or links if applicable
+            content = re.sub(r'\[.*?\]\(.*?\)', '', content)
+            formatted.append(f"The assistant explained: {content}")
+            
+    return " ".join(formatted)
 
 def detect_chat_language(chat_history):
     """Detect the primary language used in the chat history with enhanced accuracy."""
@@ -185,46 +189,65 @@ def enhance_summary_formatting(summary, chat_history):
     return enhanced
 
 def generate_english_summary(chat_text):
-    """Generate summary using T5-FLAN model for English text."""
+    """Generate summary using BART-large-CNN model for English text."""
     try:
-        system_prompt = (
-            "You are an assistant specialized in summarizing conversations about Indian government schemes. "
-            "Provide a concise and accurate summary highlighting key schemes, eligibility criteria, benefits, and application processes mentioned. "
-            "Format important information in **bold**."
+        # Pass the full conversation text to ensure the entire chat is summarized
+        input_text = chat_text
+        
+        # Tokenize manually and strictly truncate to BART's context size to prevent CUDA index bounds errors
+        inputs = _tokenizer(
+            input_text, 
+            return_tensors="pt", 
+            max_length=1024, 
+            truncation=True
+        ).to(_model.device)
+        
+        # Prevent length errors for short conversations
+        input_len = inputs.input_ids.shape[1]
+        computed_max_length = min(300, max(50, int(input_len * 0.8)))
+        computed_min_length = min(50, max(10, int(input_len * 0.2)))
+        if computed_max_length <= computed_min_length:
+             computed_max_length = computed_min_length + 20
+        
+        summary_ids = _model.generate(
+            **inputs,
+            max_length=computed_max_length,
+            min_length=computed_min_length,
+            do_sample=False,
+            num_beams=4
         )
         
-        input_text = f"{system_prompt}\n\nConversation:\n{chat_text}\n\nSummary:"
+        raw_summary = _tokenizer.decode(summary_ids[0], skip_special_tokens=True).strip()
         
-        max_input_len = 1024
-        if len(input_text) > max_input_len:
-            truncated_chat = chat_text[-800:] if len(chat_text) > 800 else chat_text
-            input_text = f"{system_prompt}\n\nConversation:\n{truncated_chat}\n\nSummary:"
+        if len(raw_summary) < 10:
+            raise ValueError("BART generated inadequate summary")
+            
+        # Post-process BART's unstructured prose into cleaner bullet points
+        cleaned = re.sub(r'\bThe user inquired:\s*', '', raw_summary, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bThe assistant explained:\s*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bUser:\s*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bBot:\s*', '', cleaned, flags=re.IGNORECASE)
         
-        result = _summarizer(
-            input_text,
-            max_length=300,
-            min_length=50,
-            do_sample=True,
-            temperature=0.6,
-            top_p=0.85,
-            num_beams=3,
-            early_stopping=True,
-            repetition_penalty=1.1
-        )
+        # Split into individual sentences at punctuation marks
+        sentences = re.split(r'(?<=[.!?])\s+', cleaned.strip())
         
-        summary = result[0]["generated_text"].strip()
-        
-        if (len(summary) < 10 or 
-            summary.lower().startswith("user:") or 
-            summary.lower().startswith("bot:") or
-            "conversation" in summary.lower() or
-            summary == input_text[:len(summary)]):
-            raise ValueError("T5 generated inadequate summary")
-        
-        return summary
+        formatted_lines = []
+        for s in sentences:
+            s_clean = s.strip()
+            # Filter out generic or hallucinated filler statements
+            if len(s_clean) > 5 and not s_clean.lower().startswith("pls give"):
+                if s_clean[0].islower():
+                    s_clean = s_clean.capitalize()
+                formatted_lines.append(f"- {s_clean}")
+                
+        if not formatted_lines:
+            return raw_summary
+            
+        struct_summary = "**Summary of Chat:**\n\n" + "\n".join(formatted_lines)
+        return struct_summary
         
     except Exception as e:
-        print(f"T5-FLAN summarization failed: {e}")
+        print(f"BART summarization failed: {e}")
         raise e
 
 def create_manual_summary(chat_history, language):
@@ -339,7 +362,7 @@ def summarize(req: SummarizeRequest):
                 return {"summary": enhanced_summary}
                 
             except Exception as english_error:
-                print(f"English T5 summarization failed: {english_error}")
+                print(f"BART summarization failed: {english_error}")
                 print("Falling back to manual English summary")
                 manual_summary = create_manual_summary(req.chat_history, "en")
                 return {"summary": manual_summary}
@@ -362,7 +385,7 @@ async def voice_command_ws(websocket: WebSocket):
             await websocket.send_text("Listening...")
             print("Listening for voice command...")
             
-            r.adjust_for_ambient_noise(source, duration=0.5)
+            r.adjust_for_ambient_noise(source, duration=2.5)
             audio = r.listen(source)
             
             await websocket.send_text("Processing...")

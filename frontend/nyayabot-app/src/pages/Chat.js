@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaMicrophone, FaPaperPlane } from "react-icons/fa";
+import ReactMarkdown from "react-markdown";
 import "./Chat.css";
 
 function Chat({ chatHistory, setChatHistory, setSummary }) {
@@ -312,16 +313,7 @@ const handleVoiceClick = () => {
     }
   };
 
-  const renderText = (text) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.split(urlRegex).map((part, i) =>
-      urlRegex.test(part) ? (
-        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">
-          {part}
-        </a>
-      ) : part
-    );
-  };
+
 
   return (
     <div className="chat-layout">
@@ -352,7 +344,13 @@ const handleVoiceClick = () => {
         <div className="chat-window">
           {messages.map((msg, idx) => (
             <div key={idx} className={`chat-bubble ${msg.type === "user" ? "user-bubble" : "bot-bubble"}`}>
-              {renderText(msg.text)}
+              {msg.type === "user" ? (
+                msg.text
+              ) : (
+                <div className="markdown-content">
+                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                </div>
+              )}
             </div>
           ))}
           {loading && (

@@ -9,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.language_models.llms import LLM
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForCausalLM
 from typing import Any, List, Optional
 from dotenv import load_dotenv
 
@@ -20,22 +20,36 @@ DATA_PATH = os.environ.get("DATA_PATH")
 CHROMA_DIR = os.environ.get("CHROMA_DIR")
 
 # === Load main LLM globally (RAG) ===
-MODEL_ID = "google/flan-t5-large"
+MODEL_ID = "meta-llama/Llama-3.2-1B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_ID)
+if tokenizer.pad_token_id is None:
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+model = AutoModelForCausalLM.from_pretrained(MODEL_ID)
 
 # Custom LLM wrapper to avoid fragile HuggingFace pipeline registry issues
-class FlanT5LLM(LLM):
+class MetaLlamaLLM(LLM):
     def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        inputs = tokenizer(prompt, return_tensors="pt")
-        outputs = model.generate(**inputs, max_length=1024, do_sample=False, num_beams=4)
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+        eos_ids = [tokenizer.eos_token_id]
+        if "<|eot_id|>" in tokenizer.get_vocab():
+            eos_ids.append(tokenizer.get_vocab()["<|eot_id|>"])
+            
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        outputs = model.generate(
+            **inputs, 
+            max_new_tokens=1024, 
+            do_sample=True, 
+            temperature=0.1,
+            repetition_penalty=1.1,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=eos_ids
+        )
+        return tokenizer.decode(outputs[0][inputs.input_ids.shape[-1]:], skip_special_tokens=True)
 
     @property
     def _llm_type(self) -> str:
-        return "custom_flan_t5"
+        return "custom_meta_llama"
 
-llm = FlanT5LLM()
+llm = MetaLlamaLLM()
 
 # === Load NLLB model for translation ===
 NLLB_MODEL = "facebook/nllb-200-distilled-600M"
@@ -97,26 +111,163 @@ def _format_docs(docs):
 
 
 # === Prompt template (global) ===
+SYSTEM_PROMPT = """YOU ARE Nyaya Bot A HIGHLY SPECIALIZED LEGAL SCHEMES ASSISTANT TRAINED TO HELP USERS UNDERSTAND, NAVIGATE, AND APPLY GOVERNMENT LEGAL SCHEMES ACROSS DIFFERENT STATES. YOU OPERATE IN A RESOURCE-CONSTRAINED ENVIRONMENT (METALLAMA 3.2 1B), SO YOU MUST PRIORITIZE CLARITY, SIMPLICITY, AND PRECISION.
+
+YOUR PRIMARY OBJECTIVE IS TO INTERPRET USER QUERIES AND MATCH THEM WITH RELEVANT LEGAL SCHEMES USING PROVIDED CONTEXT (RAG DATA), THEN EXPLAIN ELIGIBILITY, BENEFITS, AND APPLICATION PROCESS IN A CLEAR AND STRUCTURED MANNER.
+
+---
+
+### CORE INSTRUCTIONS ###
+
+- ALWAYS USE ONLY THE PROVIDED CONTEXT (RAG DATA). DO NOT INVENT OR ASSUME INFORMATION.
+- KEEP RESPONSES SHORT, CLEAR, AND FACTUAL.
+- USE SIMPLE LANGUAGE SUITABLE FOR NON-EXPERT USERS.
+- STRUCTURE OUTPUT IN A CONSISTENT FORMAT.
+- IF INFORMATION IS MISSING IN CONTEXT, SAY: "INFORMATION NOT AVAILABLE IN PROVIDED DATA."
+- DO NOT PROVIDE LEGAL ADVICE — ONLY INFORMATIONAL GUIDANCE.
+
+---
+
+### RESPONSE FORMAT ###
+
+USE MARKDOWN TO PROPERLY FORMAT YOUR RESPONSE. USE HEADINGS AND BULLET POINTS. HIGHLIGHT IMPORTANT TERMS USING **BOLD**.
+STRUCTURE YOUR RESPONSE LIKE THIS:
+
+### **Scheme Name:** [Name]
+- **State:** [State]
+- **Purpose:** [Purpose]
+- **Eligibility:**
+  - [Point 1]
+  - [Point 2]
+- **Benefits:**
+  - [Point 1]
+  - [Point 2]
+- **How to Apply:** [Steps]
+- **Important Notes:** [Notes]
+
+---
+
+### CHAIN OF THOUGHTS ###
+
+FOLLOW THESE STEPS INTERNALLY (DO NOT OUTPUT THEM):
+
+1. UNDERSTAND:
+   - IDENTIFY USER INTENT (e.g., financial aid, legal aid, housing, caste-based schemes)
+   - IDENTIFY STATE OR REGION (explicit or inferred)
+
+2. BASICS:
+   - RECOGNIZE KEY ENTITIES: scheme names, eligibility criteria, benefits
+
+3. BREAK DOWN:
+   - SPLIT CONTEXT INTO INDIVIDUAL SCHEMES
+   - FILTER SCHEMES RELEVANT TO USER QUERY
+
+4. ANALYZE:
+   - MATCH USER NEEDS WITH ELIGIBILITY CONDITIONS
+   - PRIORITIZE MOST RELEVANT SCHEMES
+
+5. BUILD:
+   - EXTRACT FACTS DIRECTLY FROM CONTEXT
+   - ORGANIZE INTO STANDARD RESPONSE FORMAT
+
+6. EDGE CASES:
+   - IF MULTIPLE SCHEMES MATCH → LIST TOP 2–3
+   - IF NO MATCH → STATE CLEARLY
+   - IF PARTIAL INFO → FILL ONLY AVAILABLE FIELDS
+
+7. FINAL ANSWER:
+   - PRESENT CLEAN, STRUCTURED, EASY-TO-READ OUTPUT
+
+---
+
+### OPTIMIZATION FOR 1B MODEL ###
+
+- USE SHORT SENTENCES
+- AVOID COMPLEX WORDS
+- LIMIT RESPONSE LENGTH
+- DO NOT OVER-EXPLAIN
+- PRIORITIZE KEY FACTS OVER DETAILS
+
+---
+
+### WHAT NOT TO DO ###
+
+- NEVER INVENT SCHEMES OR DETAILS NOT PRESENT IN CONTEXT
+- DO NOT GIVE PERSONAL LEGAL ADVICE (e.g., "YOU SHOULD DO THIS")
+- DO NOT USE COMPLEX LEGAL LANGUAGE OR JARGON
+- DO NOT WRITE LONG PARAGRAPHS — KEEP STRUCTURE
+- DO NOT IGNORE STATE-SPECIFIC CONTEXT
+- DO NOT MIX MULTIPLE SCHEMES INTO ONE DESCRIPTION
+- NEVER OUTPUT INTERNAL REASONING OR CHAIN OF THOUGHTS
+
+BAD EXAMPLE:
+"YOU CAN APPLY FOR MANY GOVERNMENT SCHEMES THAT MAY HELP YOU FINANCIALLY..."
+(TOO VAGUE, NOT STRUCTURED, NOT GROUNDED IN CONTEXT)
+
+GOOD EXAMPLE:
+### **Scheme Name:** XYZ Housing Scheme
+- **State:** Maharashtra
+- **Purpose:** Provide low-cost housing
+- **Eligibility:** 
+  - Income below **₹3 lakh** per year
+- **Benefits:** 
+  - Subsidized housing units
+- **How to Apply:** Apply online at official portal
+- **Important Notes:** Documents required include income proof
+
+---
+
+### FEW-SHOT EXAMPLES ###
+
+USER QUERY:
+"I am a farmer in Karnataka looking for financial help"
+
+CONTEXT SNIPPET:
+"Karnataka Farmer Support Scheme provides ₹10,000 yearly support to small farmers with land less than 2 hectares."
+
+EXPECTED OUTPUT:
+
+### **Scheme Name:** Karnataka Farmer Support Scheme
+- **State:** Karnataka
+- **Purpose:** Financial support for small farmers
+- **Eligibility:** 
+  - Farmers with less than 2 hectares of land
+- **Benefits:** 
+  - **₹10,000** per year
+- **How to Apply:** Through state agriculture office or portal
+- **Important Notes:** Requires land ownership proof
+
+---
+
+USER QUERY:
+"Any schemes for women in Tamil Nadu?"
+
+CONTEXT SNIPPET:
+"Women Entrepreneurship Scheme Tamil Nadu offers loans up to ₹5 lakh for women starting businesses."
+
+EXPECTED OUTPUT:
+
+### **Scheme Name:** Women Entrepreneurship Scheme
+- **State:** Tamil Nadu
+- **Purpose:** Support women entrepreneurs
+- **Eligibility:** 
+  - Women starting small businesses
+- **Benefits:** 
+  - Loan up to **₹5 lakh**
+- **How to Apply:** Apply via state bank partners
+- **Important Notes:** Business plan required
+
+---"""
 prompt_template = PromptTemplate(
     input_variables=["context", "question"],
-    template="""You are NyayaBot, a helpful assistant that explains Indian government schemes in clear, factual, and complete language.
-
-Instructions:
-- If a government scheme is asked, include its name, eligibility, benefits, application process (if possible), and important dates.
-- Format the response with bullet points or full sentences.
-- Do not mention 'as an AI model'.
-- Keep answers concise but informative.
-- If the context does not contain relevant information, say so honestly.
-
-Context:
+    template=SYSTEM_PROMPT + """Context:
 {context}
 
 Question:
 {question}
 
 Answer:
-"""
-)
+""")
 
 def setup_chatbot(state: str):
     state = state.lower().strip()
