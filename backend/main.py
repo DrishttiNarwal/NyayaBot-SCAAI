@@ -309,7 +309,7 @@ def create_manual_summary(chat_history, language):
                     key_info.append("Application process information")
                 if "benefit" in response.lower() or "assistance" in response.lower():
                     key_info.append("Benefits and assistance explained")
-            
+
             for info in list(set(key_info))[:4]:  
                 summary_parts.append(f"- {info}")
         
@@ -385,7 +385,7 @@ async def voice_command_ws(websocket: WebSocket):
             await websocket.send_text("Listening...")
             print("Listening for voice command...")
             
-            r.adjust_for_ambient_noise(source, duration=2.5)
+            r.adjust_for_ambient_noise(source, duration=0.5)
             audio = r.listen(source)
             
             await websocket.send_text("Processing...")

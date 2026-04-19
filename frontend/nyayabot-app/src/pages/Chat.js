@@ -230,9 +230,9 @@ function Chat({ chatHistory, setChatHistory, setSummary }) {
         const details = stateDetails[selectedState];
         const detailsMessage = `
 State: ${details.name}
-Website: ${details.website}
-Address: ${details.address}
-Email: ${details.email}
+\nWebsite: ${details.website}
+\nAddress: ${details.address}
+\nEmail: ${details.email}
         `;
         setMessages((prev) => [...prev, { type: "bot", text: detailsMessage }]);
         setChatHistory((prev) => [...prev, { role: "bot", content: detailsMessage }]);

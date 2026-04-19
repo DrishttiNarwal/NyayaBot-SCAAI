@@ -18,7 +18,11 @@ function App() {
     <Router>
       <div className="main-wrapper">
         <header className="navbar">
-          <h1 className="title">NyayaBot</h1>
+          <h1 className="title">
+            <Link to="/">
+              NyayaBot
+            </Link>
+          </h1>
           <nav className="nav-links">
             <Link to="/">Home</Link>
             <Link to="/Chat">Chat</Link>
